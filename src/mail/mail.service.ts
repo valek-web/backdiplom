@@ -529,13 +529,9 @@ export class MailService {
                 в CRM системе "Фокус"
               </div>
               <div class="btn-wrapper">
-                <a href="${process.env.FRONTEND_URL}/register" class="btn">
+                <a href="https://ziryanov.studio-av.ru/register" class="btn">
                   Принять приглашение
                 </a>
-              </div>
-              <div class="link">
-                Или скопируйте ссылку:<br>
-                ${process.env.FRONTEND_URL}/register
               </div>
               <div class="divider"></div>
               <div class="message" style="font-size: 13px; margin-bottom: 0;">
