@@ -1,0 +1,353 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output          = "../src/generated/prisma"
+  moduleFormat    = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+enum Permission {
+  ACCESS_TASKS
+  READ_POST
+  WRITE_POST
+  ACCESS_ADMIN
+  ACCESS_CHAT
+  ACCESS_SALES
+}
+
+enum ChatType {
+  PRIVATE   // Личный чат
+  GROUP     // Групповой чат
+}
+
+enum ChatParticipantRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum ClientPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ClientStatus {
+  NEW              // Новый
+  CONTACTED        // Связались
+  QUALIFIED        // Квалифицирован
+  PROPOSAL         // Предложение отправлено
+  NEGOTIATION      // Переговоры
+  CLOSED_WON       // Сделка выиграна (клиент)
+  CLOSED_LOST      // Сделка проиграна
+  INACTIVE         // Неактивный
+}
+
+model User {
+  id                    Int           @id @default(autoincrement())
+  email                 String        @unique
+  name                  String
+  password              String
+
+  isSystemAdmin         Boolean       @default(false)
+  permissions   Permission[] @default([])
+
+  refreshToken          String?
+  version               Int           @default(1)
+
+  posts         Post[]
+  postLike      PostLike[]
+  postComments  PostComments[]
+  allowedEmail  AllowedEmail?
+
+  ownedBoards   Board[]   @relation("BoardOwner")        // Доски, которыми владеет
+  memberBoards  BoardMember[]                            // Доски, где участник
+  authoredTasks Task[]     @relation("TaskAuthor")       // Задачи, где автор
+  assignedTasks Task[]     @relation("TaskAssignee")     // Задачи, где исполнитель
+  sales         Sale[]
+
+  chatParticipants ChatParticipant[]
+  messages         Message[]
+
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+}
+
+model AllowedEmail {
+  id                    Int           @id @default(autoincrement())
+  email                 String        @unique
+  userId                Int?          @unique
+  user                  User?  @relation(fields: [userId], references: [id])
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+}
+
+// доска
+
+model Board {
+  id          Int    @id @default(autoincrement())
+  title       String
+  description String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  authorId    Int
+  author      User      @relation("BoardOwner", fields: [authorId], references: [id], onDelete: Cascade)
+  
+  members     BoardMember[]   // Участники доски
+  columns     Column[]        // Колонки 
+
+  @@map("boards")
+}
+
+model BoardMember {
+  id        Int    @id @default(autoincrement())
+  boardId   Int
+  board     Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role   @default(VIEWER)
+
+  @@unique([boardId, userId])
+  @@map("board_members")
+}
+
+model Column {
+  id          Int    @id @default(autoincrement())
+  title       String    // "В очереди", "В работе", "На ревью", "Готово"
+  order       Int   @default(0)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  boardId     Int
+  board       Board     @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  tasks       Task[]    // Задачи в этой колонке
+
+  @@map("columns")
+}
+
+model Task {
+  id          Int    @id @default(autoincrement())
+  title       String
+  description String?   // Описание задачи
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  startDate   DateTime? // Дата начала
+  dueDate     DateTime? // Дата окончания
+
+  authorId    Int
+  author      User      @relation("TaskAuthor", fields: [authorId], references: [id])
+
+  assigneeId  Int?
+  assignee    User?     @relation("TaskAssignee", fields: [assigneeId], references: [id])
+
+  columnId    Int    // К какой колонке относится
+  column      Column    @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  position    Int       @default(0)  // Порядок внутри колонки
+
+  tags        String[]
+
+  images      Image[]  // Картинки задачи
+  videos      Video[]  // Видео задачи
+
+  @@unique([columnId, position])
+  @@map("tasks")
+}
+
+// media
+
+model Image {
+  id                    Int           @id @default(autoincrement())
+  path                  String        @unique
+  createdAt             DateTime      @default(now())
+  tasks                  Task[]
+  posts                  Post[]   
+}
+
+model Video {
+  id                    Int           @id @default(autoincrement())
+  path                  String        @unique
+  createdAt             DateTime      @default(now())
+  tasks                  Task[]
+  posts                  Post[]   
+}
+
+// posts
+
+model Post {
+  id                    Int           @id @default(autoincrement())
+  content     String?   @db.Text 
+
+  authorId    Int
+  author      User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  imageId   Int?
+  images   Image?  @relation(fields: [imageId], references: [id])
+
+  videoId   Int?
+  videos   Video?  @relation(fields: [videoId], references: [id])
+
+  likes       PostLike[]
+  comments    PostComments[]
+
+  viewCount   Int       @default(0)
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model PostComments {
+  id                    Int           @id @default(autoincrement())
+  content     String?   @db.Text 
+
+  postId    Int
+  post      Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  userId    Int
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime  @default(now())
+}
+
+model PostLike {
+  id        Int       @id @default(autoincrement())
+  postId    Int
+  post      Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@unique([postId, userId])
+  @@map("post_likes")
+}
+
+// chat 
+
+model Chat {
+  id          String        @id @default(uuid())
+  type        ChatType      @default(PRIVATE)
+  name        String?
+  avatar      String?
+  description String?       @db.Text
+  
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  participants ChatParticipant[]
+  messages     Message[]
+
+  @@map("chats")
+}
+
+model ChatParticipant {
+  id          String              @id @default(uuid())
+  userId      Int
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chatId      String
+  chat        Chat                @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  role        ChatParticipantRole @default(MEMBER)
+  
+  unreadCount Int                 @default(0)
+  lastReadAt  DateTime?
+  joinedAt    DateTime            @default(now())
+  
+  isActive    Boolean             @default(true)
+
+  @@unique([chatId, userId])
+  @@map("chat_participants")
+}
+
+model Message {
+  id          Int           @id @default(autoincrement())
+  content     String        @db.Text
+  
+  chatId      String
+  chat        Chat          @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  
+  userId      Int
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime      @default(now())
+
+  @@index([chatId, createdAt])
+  @@map("messages")
+}
+
+// client
+
+model Client {
+  id          Int       @id @default(autoincrement())
+  
+  // Основная информация
+  name        String                                    // Имя клиента
+  email       String?   @unique                         // Уникальный email
+  phone       String?                                   // Телефон
+  company     String?                                   // Название компании
+  position    String?                                   // Должность
+  
+  // Адрес
+  address     String?                                   // Адрес
+  city        String?                                   // Город
+  country     String?   @default("Россия")              // Страна
+  
+  // CRM поля
+  status      ClientStatus   @default(NEW)              // Статус клиента
+  priority    ClientPriority @default(MEDIUM)           // Приоритет
+
+  sales         Sale[]
+  
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@map("clients")
+}
+
+model Sale {
+  id          Int       @id @default(autoincrement())
+  
+  // Основная информация
+  title       String                                    // Название продажи/сделки
+  description String?   @db.Text                        // Описание
+  
+  // Суммы
+  amount      Float                                     // Сумма сделки
+  
+  // Даты
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  closedAt    DateTime?                                 // Дата закрытия сделки
+   
+  // Связи
+  clientId    Int?                                      // Клиент
+  client      Client?    @relation(fields: [clientId], references: [id])
+  
+  managerId   Int?                                      // Менеджер, ведущий сделку
+  manager     User?      @relation(fields: [managerId], references: [id])
+  
+  // Комментарии и активность
+  comments    String[]                             // Комментарии к продаже
+  
+  
+  @@index([clientId])
+  @@index([managerId])
+  @@map("sales")
+}

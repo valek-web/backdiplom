@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Block" ALTER COLUMN "styles" SET DATA TYPE TEXT;
